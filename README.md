@@ -1,4 +1,4 @@
-> 🚀 **[Открыть интерактивную документацию Swagger UI (Live Demo)](https://rinata03.github.io/api-tech-writer-portfolio/)**
+> 🚀 **[Открыть интерактивную документацию Swagger UI (Live Demo)](https://rinata03.github.io/b2b-support-api-portfolio/)**
 # Портфолио: Технический писатель (API & Docs-as-Code)
 **Косолапова Рината** | [Telegram](https://t.me/rinatakosolapova) | [Email](mailto:rinatakocneva@gmail.com)
 
