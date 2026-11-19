@@ -1,39 +1,43 @@
-> 🚀 **[Открыть интерактивную документацию Swagger UI (Live Demo)](https://rinata03.github.io/b2b-support-api-portfolio/)**
-# Портфолио: Инженер сопровождения ПО (L2) / B2B Support
-**Косолапова Рината** | [Telegram](https://t.me/rinatakosolapova) | [Email](mailto:rinatakocneva@gmail.com)
+> 🚀 [Открыть интерактивную документацию Swagger UI (Live Demo)](https://rinata03.github.io/b2b-support-api-portfolio/)
 
-Привет! Я инженер сопровождения ПО (L2) с бэкграундом в системном анализе.
-Специализируюсь на локализации сбоев REST API, проверке контрактов (OpenAPI/Postman), верификации данных (SQL) и ведении технических баз знаний, которые ускоряют запуск B2B-клиентов и разгружают разработку.
+# Сервис оформления и выдачи справок и выписок (L2 Support & API)
 
----
+**Косолапова Рината** • [Telegram](https://t.me/rinatakosolapova) • [Email](mailto:rinatakocneva@gmail.com)
 
-## 📂 Проекты в портфолио
-
-### 1. [Спецификация REST API и архитектура взаимодействия](./01-api-specification/)
-* **Стек:** OpenAPI 3.0 (YAML), Mermaid / PlantUML, RFC 7807 (Problem Details).
-* **Что сделано:** 
-  * Разработан контракт метода процессинга документов с поддержкой идемпотентности (`X-Idempotency-Key`).
-  * Спроектирована интерактивная Sequence-диаграмма взаимодействия микросервисов.
-  * Унифицированы ответы ошибок по стандарту RFC 7807.
-
-### 2. [Руководство по интеграции (Quick Start) и Postman](./02-integration-guide/)
-* **Стек:** Markdown, Postman (Environments, Pre-request scripts, Tests), cURL.
-* **Что сделано:**
-  * Пошаговый гайд для быстрого старта внешних команд интеграции.
-  * Коллекция Postman с автогенерацией заголовков на лету и тестами валидации контракта.
-  * Ускоряет первичный запуск и проверку контракта внешними командами без лишних уточнений.
-  
-### 3. [Runbook: Локализация инцидентов и траблшутинг](./03-troubleshooting-runbook/)
-* **Стек:** SQL (PostgreSQL), Mermaid (Decision Tree).
-* **Что сделано:**
-  * Инструкция для 1–2 линии техподдержки по диагностике сбоев доставки Webhook-уведомлений.
-  * Готовые SQL-запросы для проверки состояния статусов обработки и доставки вебхуков.
-  * Позволяет L1/L2 самостоятельно локализовать причину сбоя до передачи тикета в разработку.
+Демонстрационный проект в финтех-домене (выписки по счетам, справки об остатках, налоговые справки). Показывает полный цикл технического сопровождения и интеграции REST API сервиса — от чтения контракта и воспроизведения запросов в Postman до диагностики инцидентов в логах, SQL и оформления эскалаций на L3.
 
 ---
 
-## 🛠 Технический стек
-* **API & Форматы:** REST API, OpenAPI 3.0 (Swagger), JSON, YAML, Base64.
-* **Docs-as-Code & Инструменты:** Git, GitHub / GitLab, Markdown, Postman, PlantUML, Mermaid.
-* **Базы знаний & Трекинг:** Confluence, Jira.
-* **Базы данных & Диагностика:** SQL (SELECT, WHERE, JOIN), анализ логов.
+## 🔄 Сквозной сценарий работы сервиса
+1. Смежная система (CRM, B2B-портал) отправляет запрос на обработку и факсимильное подписание справки/выписки (`POST /documents/process`).
+2. Сервис проверяет JWT, лимиты и валидность данных, защищает заявку от дублей (`X-Idempotency-Key`) и передает ее во внешний сервис подписания (`SignSvc`).
+3. После завершения обработки клиенту отправляется Webhook-уведомление о готовности (`STATEMENT_READY`). При сбоях L2-инженер локализует причину по Runbook.
+
+---
+
+## 📂 Структура проекта
+
+### [1. Спецификация REST API и архитектура взаимодействия](./01-api-specification/README.md)
+* **Инструменты:** OpenAPI 3.0.3 (YAML), Swagger UI, Mermaid, RFC 7807 (Problem Details).
+* **Что внутри:**
+  * Контракт [openapi.yaml](./01-api-specification/openapi.yaml) с описанием типов справок (`ACCOUNT_STATEMENT`, `BALANCE_CERTIFICATE`, `TAX_CERTIFICATE`), заголовка идемпотентности и унифицированных ошибок (`400`, `401`, `409`, `422`, `429`, `504`).
+  * Sequence-диаграмма прохождения запроса с точками отказа и разделением ответственности между клиентом и бэкендом.
+
+### [2. Интеграционный гайд (Quick Start) и Postman-коллекция](./02-integration-guide/README.md)
+* **Инструменты:** Markdown, Postman (Environments, Pre-request scripts, Tests), cURL.
+* **Что внутри:**
+  * Пошаговый гайд с примером `cURL`, правилами идемпотентности (`X-Cache-Lookup: HIT` / `409 Conflict`) и политикой ретраев при `429` / `504`.
+  * Готовая [коллекция Postman (JSON)](./02-integration-guide/document-service.postman_collection.json) с автогенерацией `UUIDv4` и автотестами проверки ответа для быстрого воспроизведения обращений.
+
+### [3. Runbook L2: локализация инцидентов и эскалация на L3](./03-troubleshooting-runbook/README.md)
+* **Инструменты:** SQL (PostgreSQL), `kubectl` (логи), Mermaid (Decision Tree), Jira.
+* **Что внутри:**
+  * Пошаговый алгоритм диагностики недоставки Webhook о готовности справки: SQL-запросы к таблицам `integration_outbox` и `documents`, фильтр логов и дерево решений.
+  * Политика повторных попыток (`Exponential Backoff`, `DLQ`) и готовый шаблон баг-репорта для передачи инцидента разработчикам (`504 Gateway Timeout` на `SignSvc`).
+
+---
+
+## 🛠️ Стек и технологии
+* **API и контракты:** REST API, OpenAPI 3.0 (Swagger), RFC 7807, JSON, YAML, Base64.
+* **Диагностика и БД:** Postman, cURL, Chrome DevTools, SQL (PostgreSQL: `SELECT`, `WHERE`, `ORDER BY`), анализ логов (`kubectl`).
+* **Документация и процессы:** Markdown, Mermaid, Git / GitHub, Jira, Confluence.
