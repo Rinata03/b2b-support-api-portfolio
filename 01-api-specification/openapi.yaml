@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
-  title: Document Processing Service API
+  title: Statements & Certificates Service API
   version: 1.0.0
   description: |
-    Сервис первичной валидации, обработки и постановки документов в очередь на факсимильное подписание.
+    Сервис первичной валидации, оформления и постановки электронных справок и выписок в очередь на факсимильное подписание.
     
     ### Особенности:
-    * Метод создания ресурса поддерживает **идемпотентность** через заголовок `X-Idempotency-Key`.
+    * Метод создания заявки поддерживает **идемпотентность** через заголовок `X-Idempotency-Key`.
     * Ограничение частоты вызовов (Rate Limiting): до 60 запросов в минуту.
     * Все ошибки возвращаются в едином стандарте **RFC 7807 (Problem Details)**.
 
@@ -17,35 +17,35 @@ servers:
 paths:
   /documents/process:
     post:
-      summary: Создание и отправка документа на процессинг
+      summary: Создание заявки на обработку и подписание справки/выписки
       description: |
-        Принимает бинарные данные документа в формате Base64 и метаданные. 
+        Принимает сформированный файл справки или выписки в формате Base64 (PDF) и метаданные заявки.
         
         **Поведение:**
-        * При первичном вызове документ регистрируется в системе со статусом `PROCESSING`.
+        * При первичном вызове заявка регистрируется в системе со статусом `PROCESSING`, после готовности клиенту отправляется Webhook-уведомление.
         * При повторном запросе с тем же `X-Idempotency-Key` в течение 24 часов дубликат не создается, возвращается результат первой обработки.
       operationId: processDocument
       tags:
-        - Documents
+        - Statements & Certificates
       parameters:
         - name: X-Idempotency-Key
           in: header
           required: true
-          description: Уникальный ключ запроса (UUID v4) для защиты от повторных списаний/созданий при сетевых сбоях.
+          description: Уникальный ключ запроса (UUID v4) для защиты от дублирования заявок на выпуск справок при сетевых сбоях.
           schema:
             type: string
             format: uuid
             example: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
       requestBody:
         required: true
-        description: Метаданные и бинарное содержимое подписываемого документа
+        description: Метаданные и содержимое справки/выписки для подписания
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/DocumentProcessRequest'
       responses:
         '201':
-          description: Документ успешно принят в обработку
+          description: Заявка на справку/выписку успешно принята в обработку
           headers:
             Location:
               description: Относительный URI для проверки статуса сформированного документа
@@ -63,13 +63,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
         '401':
-          description: Не передан, просрочен или невалиден JWT токен в заголовке Authorization
+          description: Не передан, просрочен или невалиден JWT-токен в заголовке Authorization
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Конфликт обработки — запрос с таким X-Idempotency-Key еще выполняется в очереди
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: "https://api.bank.internal/errors/conflict"
+                title: "Conflict"
+                status: 409
+                detail: "Запрос с данным X-Idempotency-Key находится в обработке. Повторите запрос позже."
         '422':
-          description: Ошибка валидации бизнес-правил (недопустимый размер, поврежденный PDF)
+          description: Ошибка валидации бизнес-правил (недопустимый размер, неизвестный docType, поврежденный PDF)
           content:
             application/problem+json:
               schema:
@@ -99,6 +110,17 @@ paths:
                 title: "Too Many Requests"
                 status: 429
                 detail: "Превышен лимит вызовов (максимум 60 req/min). Повторите запрос через 60 секунд."
+        '504':
+          description: Таймаут внешнего сервиса подписания (SignSvc). Безопасно повторить запрос с тем же X-Idempotency-Key
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: "https://api.bank.internal/errors/gateway-timeout"
+                title: "Gateway Timeout"
+                status: 504
+                detail: "Внешний сервис факсимильного подписания не ответил за 5 секунд."
 
 components:
   schemas:
@@ -115,21 +137,21 @@ components:
           maxLength: 64
           pattern: '^[A-Z0-9_-]+$'
           description: |
-            Уникальный номер заявки во внешней CRM-системе клиента.
+            Уникальный номер заявки во внешней системе (CRM, B2B-портал, мобильное приложение).
             Допустимы заглавные латинские буквы, цифры, знаки тире и подчеркивания.
-          example: "CRM-DOC-10928"
+          example: "CRM-STMT-10928"
         docType:
           type: string
           description: |
-            Тип загружаемого документа:
-            * `LOAN_AGREEMENT` — Кредитный договор наличными или на карту.
-            * `MORTGAGE_CONTRACT` — Договор ипотечного кредитования.
-            * `ADDITIONAL_ANNEX` — Дополнительное соглашение или приложение к договору.
+            Тип запрашиваемой справки или выписки:
+            * `ACCOUNT_STATEMENT` — Выписка о движении средств по счету.
+            * `BALANCE_CERTIFICATE` — Справка об остатке средств и открытых счетах.
+            * `TAX_CERTIFICATE` — Справка для налоговых органов (2-НДФЛ / по процентам).
           enum:
-            - LOAN_AGREEMENT
-            - MORTGAGE_CONTRACT
-            - ADDITIONAL_ANNEX
-          example: "LOAN_AGREEMENT"
+            - ACCOUNT_STATEMENT
+            - BALANCE_CERTIFICATE
+            - TAX_CERTIFICATE
+          example: "ACCOUNT_STATEMENT"
         payloadBase64:
           type: string
           format: byte
@@ -148,14 +170,14 @@ components:
         documentId:
           type: string
           pattern: '^doc_[0-9]{9}$'
-          description: Внутренний уникальный идентификатор документа в сервисе процессинга.
+          description: Внутренний уникальный идентификатор справки/выписки в сервисе процессинга.
           example: "doc_987654321"
         status:
           type: string
           description: |
             Текущий статус документа в очереди на обработку:
-            * `PROCESSING` — Документ принят, идет валидация подписей и постановка в очередь.
-            * `COMPLETED` — Обработка завершена, факсимиле успешно наложено.
+            * `PROCESSING` — Заявка принята, идет валидация и постановка в очередь на подписание.
+            * `COMPLETED` — Обработка завершена, факсимиле наложено, отправляется Webhook.
             * `FAILED` — Ошибка при наложении факсимиле или файл поврежден.
           enum:
             - PROCESSING
@@ -166,7 +188,7 @@ components:
           type: string
           format: date-time
           description: Дата и время постановки в очередь в формате ISO 8601 (UTC).
-          example: "2024-03-15T11:42:00Z"
+          example: "2026-10-15T11:42:00Z"
 
     ProblemDetails:
       type: object
